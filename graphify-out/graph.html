@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>graphify - graphify-out\graph.html</title>
+<script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"
+        integrity="sha384-Ux6phic9PEHJ38YtrijhkzyJ8yQlH8i/+buBR8s3mAZOJrP1gwyvAcIYl3GWtpX1"
+        crossorigin="anonymous"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0f0f1a; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; height: 100vh; overflow: hidden; }
+  #graph { flex: 1; }
+  #sidebar { width: 280px; background: #1a1a2e; border-left: 1px solid #2a2a4e; display: flex; flex-direction: column; overflow: hidden; }
+  #search-wrap { padding: 12px; border-bottom: 1px solid #2a2a4e; }
+  #search { width: 100%; background: #0f0f1a; border: 1px solid #3a3a5e; color: #e0e0e0; padding: 7px 10px; border-radius: 6px; font-size: 13px; outline: none; }
+  #search:focus { border-color: #4E79A7; }
+  #search-results { max-height: 140px; overflow-y: auto; padding: 4px 12px; border-bottom: 1px solid #2a2a4e; display: none; }
+  .search-item { padding: 4px 6px; cursor: pointer; border-radius: 4px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .search-item:hover { background: #2a2a4e; }
+  #info-panel { padding: 14px; border-bottom: 1px solid #2a2a4e; min-height: 140px; }
+  #info-panel h3 { font-size: 13px; color: #aaa; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  #info-content { font-size: 13px; color: #ccc; line-height: 1.6; }
+  #info-content .field { margin-bottom: 5px; }
+  #info-content .field b { color: #e0e0e0; }
+  #info-content .empty { color: #555; font-style: italic; }
+  .neighbor-link { display: block; padding: 2px 6px; margin: 2px 0; border-radius: 3px; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-left: 3px solid #333; }
+  .neighbor-link:hover { background: #2a2a4e; }
+  #neighbors-list { max-height: 160px; overflow-y: auto; margin-top: 4px; }
+  #legend-wrap { flex: 1; overflow-y: auto; padding: 12px; }
+  #legend-wrap h3 { font-size: 13px; color: #aaa; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .legend-item { display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; border-radius: 4px; font-size: 12px; }
+  .legend-item:hover { background: #2a2a4e; padding-left: 4px; }
+  .legend-item.dimmed { opacity: 0.35; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .legend-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .legend-count { color: #666; font-size: 11px; }
+  #stats { padding: 10px 14px; border-top: 1px solid #2a2a4e; font-size: 11px; color: #555; }
+  #legend-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0; }
+  #legend-controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: #aaa; user-select: none; }
+  #legend-controls label:hover { color: #e0e0e0; }
+  .legend-cb, #select-all-cb { appearance: none; -webkit-appearance: none; width: 14px; height: 14px; border: 1.5px solid #3a3a5e; border-radius: 3px; background: #0f0f1a; cursor: pointer; position: relative; flex-shrink: 0; }
+  .legend-cb:checked, #select-all-cb:checked { background: #4E79A7; border-color: #4E79A7; }
+  .legend-cb:checked::after, #select-all-cb:checked::after { content: ''; position: absolute; left: 3.5px; top: 1px; width: 4px; height: 7px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  #select-all-cb:indeterminate { background: #4E79A7; border-color: #4E79A7; }
+  #select-all-cb:indeterminate::after { content: ''; position: absolute; left: 2px; top: 5px; width: 8px; height: 2px; background: #fff; border: none; transform: none; }
+</style>
+</head>
+<body>
+<div id="graph"></div>
+<div id="sidebar">
+  <div id="search-wrap">
+    <input id="search" type="text" placeholder="Search nodes..." autocomplete="off">
+    <div id="search-results"></div>
+  </div>
+  <div id="info-panel">
+    <h3>Node Info</h3>
+    <div id="info-content"><span class="empty">Click a node to inspect it</span></div>
+  </div>
+  <div id="legend-wrap">
+    <h3>Communities</h3>
+    <div id="legend-controls">
+      <label><input type="checkbox" id="select-all-cb" checked onchange="toggleAllCommunities(!this.checked)">Select All</label>
+    </div>
+    <div id="legend"></div>
+  </div>
+  <div id="stats">58 nodes &middot; 113 edges &middot; 13 communities</div>
+</div>
+<script>
+const RAW_NODES = [{"id": "client", "label": "client.py", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 20.6, "font": {"size": 12, "color": "#ffffff"}, "title": "client.py", "community": 2, "community_name": "Client Model Parameters", "source_file": "client.py", "file_type": "code", "degree": 6}, {"id": "client_flowerclient", "label": "FlowerClient", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 22.4, "font": {"size": 12, "color": "#ffffff"}, "title": "FlowerClient", "community": 7, "community_name": "Flower Fit Contract", "source_file": "client.py", "file_type": "code", "degree": 7}, {"id": "client_flowerclient_init", "label": ".__init__()", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 17.1, "font": {"size": 12, "color": "#ffffff"}, "title": ".__init__()", "community": 3, "community_name": "Flower Client Interface", "source_file": "client.py", "file_type": "code", "degree": 4}, {"id": "client_py_int", "label": "int", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 15.3, "font": {"size": 12, "color": "#ffffff"}, "title": "int", "community": 3, "community_name": "Flower Client Interface", "source_file": "client.py", "file_type": "code", "degree": 3}, {"id": "client_py_bool", "label": "bool", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "bool", "community": 3, "community_name": "Flower Client Interface", "source_file": "client.py", "file_type": "code", "degree": 1}, {"id": "client_flowerclient_get_parameters", "label": ".get_parameters()", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 17.1, "font": {"size": 12, "color": "#ffffff"}, "title": ".get_parameters()", "community": 7, "community_name": "Flower Fit Contract", "source_file": "client.py", "file_type": "code", "degree": 4}, {"id": "ndarray", "label": "ndarray", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 15.3, "font": {"size": 12, "color": "#ffffff"}, "title": "ndarray", "community": 7, "community_name": "Flower Fit Contract", "source_file": "client.py", "file_type": "code", "degree": 3}, {"id": "client_flowerclient_fit", "label": ".fit()", "color": {"background": "#FF9DA7", "border": "#FF9DA7", "highlight": {"background": "#ffffff", "border": "#FF9DA7"}}, "size": 22.4, "font": {"size": 12, "color": "#ffffff"}, "title": ".fit()", "community": 7, "community_name": "Flower Fit Contract", "source_file": "client.py", "file_type": "code", "degree": 7}, {"id": "client_flowerclient_evaluate", "label": ".evaluate()", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 20.6, "font": {"size": 12, "color": "#ffffff"}, "title": ".evaluate()", "community": 3, "community_name": "Flower Client Interface", "source_file": "client.py", "file_type": "code", "degree": 6}, {"id": "client_py_float", "label": "float", "color": {"background": "#76B7B2", "border": "#76B7B2", "highlight": {"background": "#ffffff", "border": "#76B7B2"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "float", "community": 3, "community_name": "Flower Client Interface", "source_file": "client.py", "file_type": "code", "degree": 1}, {"id": "data", "label": "data.py", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 22.4, "font": {"size": 12, "color": "#ffffff"}, "title": "data.py", "community": 0, "community_name": "Non-IID Data Partitioning", "source_file": "data.py", "file_type": "code", "degree": 7}, {"id": "data_make_means", "label": "_make_means()", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 13.5, "font": {"size": 0, "color": "#ffffff"}, "title": "_make_means()", "community": 0, "community_name": "Non-IID Data Partitioning", "source_file": "data.py", "file_type": "code", "degree": 2}, {"id": "data_build", "label": "_build()", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 15.3, "font": {"size": 12, "color": "#ffffff"}, "title": "_build()", "community": 0, "community_name": "Non-IID Data Partitioning", "source_file": "data.py", "file_type": "code", "degree": 3}, {"id": "data_py_int", "label": "int", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 15.3, "font": {"size": 12, "color": "#ffffff"}, "title": "int", "community": 0, "community_name": "Non-IID Data Partitioning", "source_file": "data.py", "file_type": "code", "degree": 3}, {"id": "data_load_partition", "label": "load_partition()", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 27.6, "font": {"size": 12, "color": "#ffffff"}, "title": "load_partition()", "community": 0, "community_name": "Non-IID Data Partitioning", "source_file": "data.py", "file_type": "code", "degree": 10}, {"id": "data_py_bool", "label": "bool", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 13.5, "font": {"size": 0, "color": "#ffffff"}, "title": "bool", "community": 0, "community_name": "Non-IID Data Partitioning", "source_file": "data.py", "file_type": "code", "degree": 2}, {"id": "data_describe_partition", "label": "describe_partition()", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 20.6, "font": {"size": 12, "color": "#ffffff"}, "title": "describe_partition()", "community": 0, "community_name": "Non-IID Data Partitioning", "source_file": "data.py", "file_type": "code", "degree": 6}, {"id": "data_rationale_1", "label": "Synthetic 10-class dataset for the federated learning demo.  Design:   - Each cl", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "Synthetic 10-class dataset for the federated learning demo.  Design:   - Each cl", "community": 0, "community_name": "Non-IID Data Partitioning", "source_file": "data.py", "file_type": "rationale", "degree": 1}, {"id": "model", "label": "model.py", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 22.4, "font": {"size": 12, "color": "#ffffff"}, "title": "model.py", "community": 2, "community_name": "Client Model Parameters", "source_file": "model.py", "file_type": "code", "degree": 7}, {"id": "model_simplenet", "label": "SimpleNet", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 20.6, "font": {"size": 12, "color": "#ffffff"}, "title": "SimpleNet", "community": 4, "community_name": "Neural Network and Evaluation", "source_file": "model.py", "file_type": "code", "degree": 6}, {"id": "model_simplenet_init", "label": ".__init__()", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": ".__init__()", "community": 4, "community_name": "Neural Network and Evaluation", "source_file": "model.py", "file_type": "code", "degree": 1}, {"id": "model_simplenet_forward", "label": ".forward()", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 17.1, "font": {"size": 12, "color": "#ffffff"}, "title": ".forward()", "community": 4, "community_name": "Neural Network and Evaluation", "source_file": "model.py", "file_type": "code", "degree": 4}, {"id": "model_get_parameters", "label": "get_parameters()", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 27.6, "font": {"size": 12, "color": "#ffffff"}, "title": "get_parameters()", "community": 2, "community_name": "Client Model Parameters", "source_file": "model.py", "file_type": "code", "degree": 10}, {"id": "model_set_parameters", "label": "set_parameters()", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 20.6, "font": {"size": 12, "color": "#ffffff"}, "title": "set_parameters()", "community": 2, "community_name": "Client Model Parameters", "source_file": "model.py", "file_type": "code", "degree": 6}, {"id": "model_rationale_1", "label": "Compact MLP for the 64-dim synthetic feature dataset.", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "Compact MLP for the 64-dim synthetic feature dataset.", "community": 2, "community_name": "Client Model Parameters", "source_file": "model.py", "file_type": "rationale", "degree": 1}, {"id": "server", "label": "server.py", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 17.1, "font": {"size": 12, "color": "#ffffff"}, "title": "server.py", "community": 1, "community_name": "FedAvg Server Strategy", "source_file": "server.py", "file_type": "code", "degree": 4}, {"id": "server_weighted_average", "label": "weighted_average()", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 18.8, "font": {"size": 12, "color": "#ffffff"}, "title": "weighted_average()", "community": 1, "community_name": "FedAvg Server Strategy", "source_file": "server.py", "file_type": "code", "degree": 5}, {"id": "server_py_int", "label": "int", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 13.5, "font": {"size": 0, "color": "#ffffff"}, "title": "int", "community": 1, "community_name": "FedAvg Server Strategy", "source_file": "server.py", "file_type": "code", "degree": 2}, {"id": "metrics", "label": "Metrics", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "Metrics", "community": 1, "community_name": "FedAvg Server Strategy", "source_file": "server.py", "file_type": "code", "degree": 1}, {"id": "server_build_strategy", "label": "build_strategy()", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 22.4, "font": {"size": 12, "color": "#ffffff"}, "title": "build_strategy()", "community": 1, "community_name": "FedAvg Server Strategy", "source_file": "server.py", "file_type": "code", "degree": 7}, {"id": "fedavg", "label": "FedAvg", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "FedAvg", "community": 1, "community_name": "FedAvg Server Strategy", "source_file": "server.py", "file_type": "code", "degree": 1}, {"id": "server_rationale_8", "label": "Weighted average of accuracy across all clients.", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "Weighted average of accuracy across all clients.", "community": 1, "community_name": "FedAvg Server Strategy", "source_file": "server.py", "file_type": "rationale", "degree": 1}, {"id": "simulate", "label": "simulate.py", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 36.5, "font": {"size": 12, "color": "#ffffff"}, "title": "simulate.py", "community": 5, "community_name": "Simulation and Plotting", "source_file": "simulate.py", "file_type": "code", "degree": 15}, {"id": "simulate_train_client", "label": "train_client()", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 20.6, "font": {"size": 12, "color": "#ffffff"}, "title": "train_client()", "community": 12, "community_name": "Local Training Function", "source_file": "simulate.py", "file_type": "code", "degree": 6}, {"id": "simulate_train_client_fedprox", "label": "train_client_fedprox()", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 20.6, "font": {"size": 12, "color": "#ffffff"}, "title": "train_client_fedprox()", "community": 10, "community_name": "FedProx Algorithm", "source_file": "simulate.py", "file_type": "code", "degree": 6}, {"id": "simulate_fedavg", "label": "fedavg()", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 18.8, "font": {"size": 12, "color": "#ffffff"}, "title": "fedavg()", "community": 11, "community_name": "FedAvg Simulation", "source_file": "simulate.py", "file_type": "code", "degree": 5}, {"id": "simulate_evaluate", "label": "evaluate()", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 18.8, "font": {"size": 12, "color": "#ffffff"}, "title": "evaluate()", "community": 4, "community_name": "Neural Network and Evaluation", "source_file": "simulate.py", "file_type": "code", "degree": 5}, {"id": "simulate_l2_drift", "label": "_l2_drift()", "color": {"background": "#BAB0AC", "border": "#BAB0AC", "highlight": {"background": "#ffffff", "border": "#BAB0AC"}}, "size": 17.1, "font": {"size": 12, "color": "#ffffff"}, "title": "_l2_drift()", "community": 9, "community_name": "Client Drift Analysis", "source_file": "simulate.py", "file_type": "code", "degree": 4}, {"id": "simulate_run_experiment", "label": "run_experiment()", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 40.0, "font": {"size": 12, "color": "#ffffff"}, "title": "run_experiment()", "community": 6, "community_name": "Experiment Orchestration", "source_file": "simulate.py", "file_type": "code", "degree": 17}, {"id": "simulate_py_bool", "label": "bool", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "bool", "community": 6, "community_name": "Experiment Orchestration", "source_file": "simulate.py", "file_type": "code", "degree": 1}, {"id": "str", "label": "str", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "str", "community": 6, "community_name": "Experiment Orchestration", "source_file": "simulate.py", "file_type": "code", "degree": 1}, {"id": "simulate_py_float", "label": "float", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "float", "community": 6, "community_name": "Experiment Orchestration", "source_file": "simulate.py", "file_type": "code", "degree": 1}, {"id": "simulate_rounds_to", "label": "_rounds_to()", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 15.3, "font": {"size": 12, "color": "#ffffff"}, "title": "_rounds_to()", "community": 5, "community_name": "Simulation and Plotting", "source_file": "simulate.py", "file_type": "code", "degree": 3}, {"id": "simulate_plot_results", "label": "plot_results()", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 13.5, "font": {"size": 0, "color": "#ffffff"}, "title": "plot_results()", "community": 5, "community_name": "Simulation and Plotting", "source_file": "simulate.py", "file_type": "code", "degree": 2}, {"id": "simulate_rationale_1", "label": "Federated Learning Demo \u2014 PyTorch + FedAvg / FedProx ===========================", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "Federated Learning Demo \u2014 PyTorch + FedAvg / FedProx ===========================", "community": 5, "community_name": "Simulation and Plotting", "source_file": "simulate.py", "file_type": "rationale", "degree": 1}, {"id": "simulate_rationale_31", "label": "Train a local copy of the global model and return its weights.", "color": {"background": "#E15759", "border": "#E15759", "highlight": {"background": "#ffffff", "border": "#E15759"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "Train a local copy of the global model and return its weights.", "community": 12, "community_name": "Local Training Function", "source_file": "simulate.py", "file_type": "rationale", "degree": 1}, {"id": "simulate_rationale_45", "label": "FedProx local step: adds \u00b5/2 * ||w - w_global||\u00b2 to the loss.", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "FedProx local step: adds \u00b5/2 * ||w - w_global||\u00b2 to the loss.", "community": 10, "community_name": "FedProx Algorithm", "source_file": "simulate.py", "file_type": "rationale", "degree": 1}, {"id": "simulate_rationale_65", "label": "Weighted average of client weight arrays.", "color": {"background": "#F28E2B", "border": "#F28E2B", "highlight": {"background": "#ffffff", "border": "#F28E2B"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "Weighted average of client weight arrays.", "community": 11, "community_name": "FedAvg Simulation", "source_file": "simulate.py", "file_type": "rationale", "degree": 1}, {"id": "simulate_rationale_83", "label": "L2 norm of weight delta between two parameter lists.", "color": {"background": "#BAB0AC", "border": "#BAB0AC", "highlight": {"background": "#ffffff", "border": "#BAB0AC"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "L2 norm of weight delta between two parameter lists.", "community": 9, "community_name": "Client Drift Analysis", "source_file": "simulate.py", "file_type": "rationale", "degree": 1}, {"id": "simulate_rationale_89", "label": "Returns (rounds, accs, client_drifts) where client_drifts[round][client] = L2 dr", "color": {"background": "#B07AA1", "border": "#B07AA1", "highlight": {"background": "#ffffff", "border": "#B07AA1"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "Returns (rounds, accs, client_drifts) where client_drifts[round][client] = L2 dr", "community": 6, "community_name": "Experiment Orchestration", "source_file": "simulate.py", "file_type": "rationale", "degree": 1}, {"id": "simulate_rationale_136", "label": "First round index (1-based) where accuracy crosses threshold, else None.", "color": {"background": "#EDC948", "border": "#EDC948", "highlight": {"background": "#ffffff", "border": "#EDC948"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "First round index (1-based) where accuracy crosses threshold, else None.", "community": 5, "community_name": "Simulation and Plotting", "source_file": "simulate.py", "file_type": "rationale", "degree": 1}, {"id": "data_testloader", "label": "_TESTLOADER (global test DataLoader)", "color": {"background": "#59A14F", "border": "#59A14F", "highlight": {"background": "#ffffff", "border": "#59A14F"}}, "size": 11.8, "font": {"size": 0, "color": "#ffffff"}, "title": "_TESTLOADER (global test DataLoader)", "community": 4, "community_name": "Neural Network and Evaluation", "source_file": "data.py", "file_type": "code", "degree": 1}, {"id": "readme_federated_learning_demo", "label": "Federated Learning Demo (README)", "color": {"background": "#9C755F", "border": "#9C755F", "highlight": {"background": "#ffffff", "border": "#9C755F"}}, "size": 15.3, "font": {"size": 12, "color": "#ffffff"}, "title": "Federated Learning Demo (README)", "community": 8, "community_name": "Federated Learning Concepts", "source_file": "README.md", "file_type": "document", "degree": 3}, {"id": "concept_fedavg", "label": "FedAvg Algorithm (McMahan et al. 2017)", "color": {"background": "#9C755F", "border": "#9C755F", "highlight": {"background": "#ffffff", "border": "#9C755F"}}, "size": 17.1, "font": {"size": 12, "color": "#ffffff"}, "title": "FedAvg Algorithm (McMahan et al. 2017)", "community": 8, "community_name": "Federated Learning Concepts", "source_file": "simulate.py", "file_type": "concept", "degree": 4}, {"id": "concept_fedprox", "label": "FedProx Algorithm (Li et al. 2020)", "color": {"background": "#4E79A7", "border": "#4E79A7", "highlight": {"background": "#ffffff", "border": "#4E79A7"}}, "size": 15.3, "font": {"size": 12, "color": "#ffffff"}, "title": "FedProx Algorithm (Li et al. 2020)", "community": 10, "community_name": "FedProx Algorithm", "source_file": "simulate.py", "file_type": "concept", "degree": 3}, {"id": "concept_non_iid_data", "label": "Non-IID Data Partitioning", "color": {"background": "#9C755F", "border": "#9C755F", "highlight": {"background": "#ffffff", "border": "#9C755F"}}, "size": 17.1, "font": {"size": 12, "color": "#ffffff"}, "title": "Non-IID Data Partitioning", "community": 8, "community_name": "Federated Learning Concepts", "source_file": "data.py", "file_type": "concept", "degree": 4}, {"id": "concept_client_drift", "label": "Client Weight Drift (L2)", "color": {"background": "#BAB0AC", "border": "#BAB0AC", "highlight": {"background": "#ffffff", "border": "#BAB0AC"}}, "size": 17.1, "font": {"size": 12, "color": "#ffffff"}, "title": "Client Weight Drift (L2)", "community": 9, "community_name": "Client Drift Analysis", "source_file": "simulate.py", "file_type": "concept", "degree": 4}, {"id": "concept_data_privacy", "label": "Data Privacy via Weight Sharing", "color": {"background": "#9C755F", "border": "#9C755F", "highlight": {"background": "#ffffff", "border": "#9C755F"}}, "size": 13.5, "font": {"size": 0, "color": "#ffffff"}, "title": "Data Privacy via Weight Sharing", "community": 8, "community_name": "Federated Learning Concepts", "source_file": "README.md", "file_type": "concept", "degree": 2}];
+const RAW_EDGES = [{"from": "client", "to": "client_flowerclient", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client", "to": "data", "label": "imports_from", "title": "imports_from [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client", "to": "data_load_partition", "label": "imports", "title": "imports [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client", "to": "model", "label": "imports_from", "title": "imports_from [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client", "to": "model_get_parameters", "label": "imports", "title": "imports [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client", "to": "model_set_parameters", "label": "imports", "title": "imports [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient", "to": "client_flowerclient_evaluate", "label": "method", "title": "method [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient", "to": "client_flowerclient_fit", "label": "method", "title": "method [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient", "to": "client_flowerclient_get_parameters", "label": "method", "title": "method [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient", "to": "client_flowerclient_init", "label": "method", "title": "method [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient", "to": "data_load_partition", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient", "to": "model_simplenet", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient_init", "to": "client_py_bool", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient_init", "to": "client_py_int", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient_init", "to": "data_load_partition", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_py_int", "to": "client_flowerclient_evaluate", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_py_int", "to": "client_flowerclient_fit", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient_get_parameters", "to": "client_flowerclient_fit", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient_get_parameters", "to": "model_get_parameters", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient_get_parameters", "to": "ndarray", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "ndarray", "to": "client_flowerclient_evaluate", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "ndarray", "to": "client_flowerclient_fit", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient_fit", "to": "model_get_parameters", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient_fit", "to": "model_set_parameters", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient_fit", "to": "simulate_train_client", "label": "semantically_similar_to", "title": "semantically_similar_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "client_flowerclient_evaluate", "to": "client_py_float", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient_evaluate", "to": "model_set_parameters", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "client_flowerclient_evaluate", "to": "simulate_evaluate", "label": "semantically_similar_to", "title": "semantically_similar_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "data", "to": "data_build", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "data", "to": "data_describe_partition", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "data", "to": "data_load_partition", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "data", "to": "data_make_means", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "data", "to": "data_rationale_1", "label": "rationale_for", "title": "rationale_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "data", "to": "simulate", "label": "imports_from", "title": "imports_from [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "data_make_means", "to": "data_build", "label": "references", "title": "references [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "data_build", "to": "data_py_int", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "data_py_int", "to": "data_describe_partition", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "data_py_int", "to": "data_load_partition", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "data_load_partition", "to": "data_describe_partition", "label": "references", "title": "references [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "data_load_partition", "to": "concept_non_iid_data", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "data_load_partition", "to": "data_py_bool", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "data_load_partition", "to": "simulate", "label": "imports", "title": "imports [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "data_load_partition", "to": "simulate_run_experiment", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "data_py_bool", "to": "data_describe_partition", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "data_describe_partition", "to": "simulate", "label": "imports", "title": "imports [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "data_describe_partition", "to": "simulate_run_experiment", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model", "to": "model_get_parameters", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model", "to": "model_set_parameters", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model", "to": "model_simplenet", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model", "to": "model_rationale_1", "label": "rationale_for", "title": "rationale_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model", "to": "server", "label": "imports_from", "title": "imports_from [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model", "to": "simulate", "label": "imports_from", "title": "imports_from [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model_simplenet", "to": "model_simplenet_forward", "label": "method", "title": "method [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model_simplenet", "to": "model_simplenet_init", "label": "method", "title": "method [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model_simplenet", "to": "server_build_strategy", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model_simplenet", "to": "simulate_run_experiment", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model_simplenet_forward", "to": "simulate_evaluate", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model_simplenet_forward", "to": "simulate_train_client", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model_simplenet_forward", "to": "simulate_train_client_fedprox", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model_get_parameters", "to": "server", "label": "imports", "title": "imports [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model_get_parameters", "to": "server_build_strategy", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model_get_parameters", "to": "simulate", "label": "imports", "title": "imports [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model_get_parameters", "to": "simulate_run_experiment", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model_get_parameters", "to": "simulate_train_client", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model_get_parameters", "to": "simulate_train_client_fedprox", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model_set_parameters", "to": "simulate", "label": "imports", "title": "imports [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "model_set_parameters", "to": "simulate_run_experiment", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "server", "to": "server_build_strategy", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "server", "to": "server_weighted_average", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "server_weighted_average", "to": "server_build_strategy", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "server_weighted_average", "to": "server_rationale_8", "label": "rationale_for", "title": "rationale_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "server_weighted_average", "to": "metrics", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "server_weighted_average", "to": "server_py_int", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "server_py_int", "to": "server_build_strategy", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "server_build_strategy", "to": "fedavg", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "server_build_strategy", "to": "simulate_fedavg", "label": "semantically_similar_to", "title": "semantically_similar_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "simulate", "to": "simulate_evaluate", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate", "to": "simulate_fedavg", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate", "to": "simulate_l2_drift", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate", "to": "simulate_plot_results", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate", "to": "simulate_rounds_to", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate", "to": "simulate_run_experiment", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate", "to": "simulate_train_client", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate", "to": "simulate_train_client_fedprox", "label": "contains", "title": "contains [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate", "to": "simulate_rationale_1", "label": "rationale_for", "title": "rationale_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_train_client", "to": "simulate_rationale_31", "label": "rationale_for", "title": "rationale_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_train_client", "to": "simulate_run_experiment", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_train_client_fedprox", "to": "simulate_rationale_45", "label": "rationale_for", "title": "rationale_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_train_client_fedprox", "to": "simulate_run_experiment", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_train_client_fedprox", "to": "concept_fedprox", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_fedavg", "to": "concept_fedavg", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_fedavg", "to": "simulate_rationale_65", "label": "rationale_for", "title": "rationale_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_fedavg", "to": "simulate_run_experiment", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_evaluate", "to": "data_testloader", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_evaluate", "to": "simulate_run_experiment", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_l2_drift", "to": "concept_client_drift", "label": "implements", "title": "implements [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_l2_drift", "to": "simulate_rationale_83", "label": "rationale_for", "title": "rationale_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_l2_drift", "to": "simulate_run_experiment", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_run_experiment", "to": "simulate_rationale_89", "label": "rationale_for", "title": "rationale_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_run_experiment", "to": "concept_client_drift", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_run_experiment", "to": "concept_non_iid_data", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_run_experiment", "to": "simulate_py_bool", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_run_experiment", "to": "simulate_py_float", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_run_experiment", "to": "str", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_rounds_to", "to": "simulate_plot_results", "label": "calls", "title": "calls [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "simulate_rounds_to", "to": "simulate_rationale_136", "label": "rationale_for", "title": "rationale_for [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_federated_learning_demo", "to": "concept_data_privacy", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_federated_learning_demo", "to": "concept_fedavg", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "readme_federated_learning_demo", "to": "concept_non_iid_data", "label": "references", "title": "references [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "concept_fedavg", "to": "concept_data_privacy", "label": "rationale_for", "title": "rationale_for [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "concept_fedavg", "to": "concept_fedprox", "label": "conceptually_related_to", "title": "conceptually_related_to [EXTRACTED]", "dashes": false, "width": 2, "color": {"opacity": 0.7}, "confidence": "EXTRACTED"}, {"from": "concept_fedprox", "to": "concept_client_drift", "label": "rationale_for", "title": "rationale_for [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}, {"from": "concept_non_iid_data", "to": "concept_client_drift", "label": "conceptually_related_to", "title": "conceptually_related_to [INFERRED]", "dashes": true, "width": 1, "color": {"opacity": 0.35}, "confidence": "INFERRED"}];
+const LEGEND = [{"cid": 0, "color": "#4E79A7", "label": "Non-IID Data Partitioning", "count": 8}, {"cid": 1, "color": "#F28E2B", "label": "FedAvg Server Strategy", "count": 7}, {"cid": 2, "color": "#E15759", "label": "Client Model Parameters", "count": 5}, {"cid": 3, "color": "#76B7B2", "label": "Flower Client Interface", "count": 5}, {"cid": 4, "color": "#59A14F", "label": "Neural Network and Evaluation", "count": 5}, {"cid": 5, "color": "#EDC948", "label": "Simulation and Plotting", "count": 5}, {"cid": 6, "color": "#B07AA1", "label": "Experiment Orchestration", "count": 5}, {"cid": 7, "color": "#FF9DA7", "label": "Flower Fit Contract", "count": 4}, {"cid": 8, "color": "#9C755F", "label": "Federated Learning Concepts", "count": 4}, {"cid": 9, "color": "#BAB0AC", "label": "Client Drift Analysis", "count": 3}, {"cid": 10, "color": "#4E79A7", "label": "FedProx Algorithm", "count": 3}, {"cid": 11, "color": "#F28E2B", "label": "FedAvg Simulation", "count": 2}, {"cid": 12, "color": "#E15759", "label": "Local Training Function", "count": 2}];
+
+// HTML-escape helper — prevents XSS when injecting graph data into innerHTML
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// Build vis datasets
+const nodesDS = new vis.DataSet(RAW_NODES.map(n => ({
+  id: n.id, label: n.label, color: n.color, size: n.size,
+  font: n.font, title: n.title,
+  _community: n.community, _community_name: n.community_name,
+  _source_file: n.source_file, _file_type: n.file_type, _degree: n.degree,
+})));
+
+const edgesDS = new vis.DataSet(RAW_EDGES.map((e, i) => ({
+  id: i, from: e.from, to: e.to,
+  label: '',
+  title: e.title,
+  dashes: e.dashes,
+  width: e.width,
+  color: e.color,
+  arrows: { to: { enabled: true, scaleFactor: 0.5 } },
+})));
+
+const container = document.getElementById('graph');
+const network = new vis.Network(container, { nodes: nodesDS, edges: edgesDS }, {
+  physics: {
+    enabled: true,
+    solver: 'forceAtlas2Based',
+    forceAtlas2Based: {
+      gravitationalConstant: -60,
+      centralGravity: 0.005,
+      springLength: 120,
+      springConstant: 0.08,
+      damping: 0.4,
+      avoidOverlap: 0.8,
+    },
+    stabilization: { iterations: 200, fit: true },
+  },
+  interaction: {
+    hover: true,
+    tooltipDelay: 100,
+    hideEdgesOnDrag: true,
+    navigationButtons: false,
+    keyboard: false,
+  },
+  nodes: { shape: 'dot', borderWidth: 1.5 },
+  edges: { smooth: { type: 'continuous', roundness: 0.2 }, selectionWidth: 3 },
+});
+
+network.once('stabilizationIterationsDone', () => {
+  network.setOptions({ physics: { enabled: false } });
+});
+
+function showInfo(nodeId) {
+  const n = nodesDS.get(nodeId);
+  if (!n) return;
+  const neighborIds = network.getConnectedNodes(nodeId);
+  const neighborItems = neighborIds.map(nid => {
+    const nb = nodesDS.get(nid);
+    const color = nb ? nb.color.background : '#555';
+    return `<span class="neighbor-link" style="border-left-color:${esc(color)}" onclick="focusNode(${JSON.stringify(nid)})">${esc(nb ? nb.label : nid)}</span>`;
+  }).join('');
+  document.getElementById('info-content').innerHTML = `
+    <div class="field"><b>${esc(n.label)}</b></div>
+    <div class="field">Type: ${esc(n._file_type || 'unknown')}</div>
+    <div class="field">Community: ${esc(n._community_name)}</div>
+    <div class="field">Source: ${esc(n._source_file || '-')}</div>
+    <div class="field">Degree: ${n._degree}</div>
+    ${neighborIds.length ? `<div class="field" style="margin-top:8px;color:#aaa;font-size:11px">Neighbors (${neighborIds.length})</div><div id="neighbors-list">${neighborItems}</div>` : ''}
+  `;
+}
+
+function focusNode(nodeId) {
+  network.focus(nodeId, { scale: 1.4, animation: true });
+  network.selectNodes([nodeId]);
+  showInfo(nodeId);
+}
+
+// Track hovered node — hover detection is more reliable than click params
+let hoveredNodeId = null;
+network.on('hoverNode', params => {
+  hoveredNodeId = params.node;
+  container.style.cursor = 'pointer';
+});
+network.on('blurNode', () => {
+  hoveredNodeId = null;
+  container.style.cursor = 'default';
+});
+container.addEventListener('click', () => {
+  if (hoveredNodeId !== null) {
+    showInfo(hoveredNodeId);
+    network.selectNodes([hoveredNodeId]);
+  }
+});
+network.on('click', params => {
+  if (params.nodes.length > 0) {
+    showInfo(params.nodes[0]);
+  } else if (hoveredNodeId === null) {
+    document.getElementById('info-content').innerHTML = '<span class="empty">Click a node to inspect it</span>';
+  }
+});
+
+const searchInput = document.getElementById('search');
+const searchResults = document.getElementById('search-results');
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.toLowerCase().trim();
+  searchResults.innerHTML = '';
+  if (!q) { searchResults.style.display = 'none'; return; }
+  const matches = RAW_NODES.filter(n => n.label.toLowerCase().includes(q)).slice(0, 20);
+  if (!matches.length) { searchResults.style.display = 'none'; return; }
+  searchResults.style.display = 'block';
+  matches.forEach(n => {
+    const el = document.createElement('div');
+    el.className = 'search-item';
+    el.textContent = n.label;
+    el.style.borderLeft = `3px solid ${n.color.background}`;
+    el.style.paddingLeft = '8px';
+    el.onclick = () => {
+      network.focus(n.id, { scale: 1.5, animation: true });
+      network.selectNodes([n.id]);
+      showInfo(n.id);
+      searchResults.style.display = 'none';
+      searchInput.value = '';
+    };
+    searchResults.appendChild(el);
+  });
+});
+document.addEventListener('click', e => {
+  if (!searchResults.contains(e.target) && e.target !== searchInput)
+    searchResults.style.display = 'none';
+});
+
+const hiddenCommunities = new Set();
+
+const selectAllCb = document.getElementById('select-all-cb');
+
+function updateSelectAllState() {
+  const total = LEGEND.length;
+  const hidden = hiddenCommunities.size;
+  selectAllCb.checked = hidden === 0;
+  selectAllCb.indeterminate = hidden > 0 && hidden < total;
+}
+
+function toggleAllCommunities(hide) {
+  document.querySelectorAll('.legend-item').forEach(item => {
+    hide ? item.classList.add('dimmed') : item.classList.remove('dimmed');
+  });
+  document.querySelectorAll('.legend-cb').forEach(cb => {
+    cb.checked = !hide;
+  });
+  LEGEND.forEach(c => {
+    if (hide) hiddenCommunities.add(c.cid); else hiddenCommunities.delete(c.cid);
+  });
+  const updates = RAW_NODES.map(n => ({ id: n.id, hidden: hide }));
+  nodesDS.update(updates);
+  updateSelectAllState();
+}
+
+const legendEl = document.getElementById('legend');
+LEGEND.forEach(c => {
+  const item = document.createElement('div');
+  item.className = 'legend-item';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.className = 'legend-cb';
+  cb.checked = true;
+  cb.addEventListener('change', (e) => {
+    e.stopPropagation();
+    if (cb.checked) {
+      hiddenCommunities.delete(c.cid);
+      item.classList.remove('dimmed');
+    } else {
+      hiddenCommunities.add(c.cid);
+      item.classList.add('dimmed');
+    }
+    const updates = RAW_NODES
+      .filter(n => n.community === c.cid)
+      .map(n => ({ id: n.id, hidden: !cb.checked }));
+    nodesDS.update(updates);
+    updateSelectAllState();
+  });
+  item.innerHTML = `<div class="legend-dot" style="background:${c.color}"></div>
+    <span class="legend-label">${c.label}</span>
+    <span class="legend-count">${c.count}</span>`;
+  item.prepend(cb);
+  item.onclick = (e) => {
+    if (e.target === cb) return;
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event('change'));
+  };
+  legendEl.appendChild(item);
+});
+</script>
+<script>
+// Render hyperedges as shaded regions
+const hyperedges = [{"id": "federated_round_loop", "label": "Federated Training Round: Local Training \u2192 Aggregation \u2192 Global Update", "nodes": ["simulate_train_client", "simulate_train_client_fedprox", "simulate_fedavg", "model_set_parameters", "simulate_evaluate"], "relation": "participate_in", "confidence": "EXTRACTED", "confidence_score": 0.95, "source_file": "simulate.py"}, {"id": "flower_client_server_contract", "label": "Flower Client\u2013Server FL Contract (NumPyClient interface)", "nodes": ["client_flowerclient", "client_flowerclient_fit", "client_flowerclient_evaluate", "server_build_strategy", "server_weighted_average"], "relation": "implement", "confidence": "EXTRACTED", "confidence_score": 0.95, "source_file": "client.py"}, {"id": "non_iid_challenge_mitigation", "label": "Non-IID Challenge and Mitigation Stack", "nodes": ["concept_non_iid_data", "concept_client_drift", "concept_fedprox", "simulate_train_client_fedprox", "data_load_partition"], "relation": "participate_in", "confidence": "INFERRED", "confidence_score": 0.85, "source_file": "simulate.py"}];
+// afterDrawing passes ctx already transformed to network coordinate space.
+// Draw node positions raw — no manual pan/zoom/DPR math needed.
+network.on('afterDrawing', function(ctx) {
+    hyperedges.forEach(h => {
+        const positions = h.nodes
+            .map(nid => network.getPositions([nid])[nid])
+            .filter(p => p !== undefined);
+        if (positions.length < 2) return;
+        ctx.save();
+        ctx.globalAlpha = 0.12;
+        ctx.fillStyle = '#6366f1';
+        ctx.strokeStyle = '#6366f1';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        // Centroid and expanded hull in network coordinates
+        const cx = positions.reduce((s, p) => s + p.x, 0) / positions.length;
+        const cy = positions.reduce((s, p) => s + p.y, 0) / positions.length;
+        const expanded = positions.map(p => ({
+            x: cx + (p.x - cx) * 1.15,
+            y: cy + (p.y - cy) * 1.15
+        }));
+        ctx.moveTo(expanded[0].x, expanded[0].y);
+        expanded.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 0.4;
+        ctx.stroke();
+        // Label
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = '#4f46e5';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(h.label, cx, cy - 5);
+        ctx.restore();
+    });
+});
+</script>
+</body>
+</html>

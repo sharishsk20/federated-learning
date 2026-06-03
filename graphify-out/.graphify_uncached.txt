@@ -1,0 +1,6 @@
+E:\federatedlearning\client.py
+E:\federatedlearning\data.py
+E:\federatedlearning\model.py
+E:\federatedlearning\server.py
+E:\federatedlearning\simulate.py
+E:\federatedlearning\README.md
