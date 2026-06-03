@@ -73,4 +73,4 @@ def describe_partition(client_id: int, num_clients: int = 5, non_iid: bool = Tru
     dominant = [(client_id * 2) % N_CLASSES, (client_id * 2 + 1) % N_CLASSES]
     top      = sorted(range(N_CLASSES), key=lambda i: -counts[i])[:3]
     info     = "  ".join(f"cls{i}:{counts[i]}" for i in top)
-    print(f"  Client {client_id}  n={total:4d}  dominant={dominant}  top → {info}")
+    print(f"  Client {client_id}  n={total:4d}  dominant={dominant}  top -> {info}")

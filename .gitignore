@@ -1,4 +1,4 @@
-﻿__pycache__/
+__pycache__/
 *.pyc
 *.pyo
 data/
@@ -6,3 +6,4 @@ results/
 *.png
 *.json
 .env
+venv/
