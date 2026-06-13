@@ -1,45 +1,92 @@
-# Federated Learning Demo
-**Flower + PyTorch · FedAvg · IID vs non-IID comparison**
+# Federated Learning — FedAvg & FedProx from scratch
 
-A full federated learning simulation showing 5 clients training a CNN on private
-local data shards — raw data never leaves each client, only model weights are shared.
+A self-contained federated learning simulation built directly on PyTorch (no FL
+framework). It implements **FedAvg** and **FedProx** by hand and instruments
+**per-client weight drift** to show *why* non-IID client data slows convergence —
+and how FedProx's proximal term mitigates it.
 
-## What it does
-- Simulates 5 clients each holding a private, non-overlapping data shard
-- Implements FedAvg (McMahan et al. 2017) for server-side aggregation
-- Compares IID (uniform) vs non-IID (skewed) data distributions
-- Produces a comparison chart showing convergence gap
+> The point of this repo is the **mechanics and the diagnostics**, not a headline
+> accuracy number. The dataset is synthetic and deliberately separable (see below),
+> so accuracy is not a meaningful benchmark — the weight-drift behaviour is.
+
+## What it implements
+
+- **FedAvg** (McMahan et al., 2017) — sample-count-weighted aggregation of client weights.
+- **FedProx** (Li et al., 2020) — adds a proximal term `µ/2 · ‖w − w_global‖²` to each
+  client's local loss to keep local updates close to the global model.
+- **IID vs non-IID partitioning** — 5 clients, non-overlapping shards; non-IID clients
+  are each dominated by 2 of 10 classes.
+- **Per-client L2 weight drift tracking** — measures how far each client pulls away from
+  the global model per round, visualised as per-round curves and per-client heatmaps.
+
+Three experiments are run and compared: IID·FedAvg, non-IID·FedAvg, non-IID·FedProx.
+
+## The dataset (read this before trusting any number)
+
+`data.py` generates a synthetic 10-class set: each class is a Gaussian cluster with a
+distinct, near-orthogonal mean (`SIGNAL=2.5`, `NOISE=1.5`). This is **near
+linearly separable by construction** — high accuracy is expected and is *not* evidence
+of model quality. The signal/noise ratio was chosen specifically so the IID vs non-IID
+convergence gap is visible within a few rounds. It is a controlled illustration, not a
+real-data result. Use a real federated dataset (e.g. partitioned MNIST/CIFAR or LEAF)
+if you want a benchmark.
 
 ## Quickstart
+
 ```bash
 pip install -r requirements.txt
-python simulate.py
+python simulate.py          # runs all 3 experiments, writes fl_results.png
+```
+
+`requirements.txt`:
+
+```
+torch
+numpy
+matplotlib
+```
+
+Or with Docker:
+
+```bash
+docker build -t fl-demo .
+docker run --rm -v "$PWD:/out" fl-demo   # chart written to fl_results.png in /app
 ```
 
 ## Project structure
+
 ```
-├── model.py        # CNN architecture + weight helpers
-├── data.py         # Data loading + IID/non-IID partitioning
-├── client.py       # Flower NumPyClient
-├── server.py       # FedAvg strategy + aggregation helpers
-├── simulate.py     # Orchestrator — runs all experiments
-├── run_client.py   # Subprocess entry point per client
-└── Dockerfile
+├── simulate.py   # entry point — from-scratch FedAvg/FedProx, runs experiments, plots
+├── model.py      # SimpleNet (MLP) + state_dict <-> ndarray helpers
+├── data.py       # synthetic dataset + IID / non-IID partitioning
+├── Dockerfile
+└── fl_results.png
 ```
 
-## Key results
-| Mode    | Final accuracy | Convergence speed |
-|---------|---------------|-------------------|
-| IID     | ~98%          | Fast (round 1)    |
-| non-IID | ~97%          | Slow (3+ rounds)  |
+## What the chart shows (`fl_results.png`)
 
-The 1-2% gap and slower early convergence under non-IID is the core FL research
-finding this demo reproduces — it motivates techniques like FedProx and SCAFFOLD.
+1. **Accuracy over rounds** — IID·FedAvg vs non-IID·FedAvg vs non-IID·FedProx, with the
+   convergence-threshold annotation (rounds to reach the threshold).
+2. **Mean L2 weight drift per round** — how heterogeneity manifests as larger client
+   weight deltas, and how FedProx suppresses them.
+3–4. **Per-client drift heatmaps** — FedAvg vs FedProx, showing which clients drift most
+   and how the proximal term flattens the distribution.
 
-## Resume bullet points
-```
-• Simulated 5-client federated training with non-IID data partitioning (Flower + PyTorch)
-• Implemented FedAvg aggregation; global model reached 97%+ accuracy without raw data sharing
-• Benchmarked IID vs non-IID convergence — reproduced accuracy gap matching FL literature
-• Containerized with Docker; reproducible in one command
-```
+## What this demonstrates
+
+- A correct, framework-free implementation of FedAvg and FedProx.
+- A working measurement of client heterogeneity (weight drift), not just accuracy.
+- The expected qualitative effect: non-IID data increases per-client drift and slows
+  early convergence; FedProx's proximal term reduces drift toward the global model.
+
+## Notes / honest limitations
+
+- Synthetic, separable data — accuracy is illustrative only (see *The dataset*).
+- The IID/non-IID gap magnitude depends on the tuned signal/noise ratio.
+- Single-process simulation (clients run sequentially), not real distributed training.
+- No secure aggregation, differential privacy, or communication-cost modelling.
+
+## References
+
+- McMahan et al., *Communication-Efficient Learning of Deep Networks from Decentralized Data*, 2017.
+- Li et al., *Federated Optimization in Heterogeneous Networks* (FedProx), 2020.
